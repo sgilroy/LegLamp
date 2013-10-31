@@ -11,7 +11,7 @@ int transitionEndCounter = 0;
 int transitionStartCounter = 0;
 int droppedFrames = 0;
 
-const int fps = 30;
+const int fps = 60;
 
 const int dataPin = 4;
 
@@ -73,6 +73,8 @@ boolean autoTransition = true; // if true, transition to a different render effe
 
 // function prototypes, leave these be :)
 void renderEffectSolidFill(byte idx);
+void renderEffectLampSolidFill(byte idx);
+void renderEffectLampFlicker(byte idx);
 void renderEffectBluetoothLamp(byte idx);
 void renderEffectRainbow(byte idx);
 void renderEffectSineWaveChase(byte idx);
@@ -101,15 +103,31 @@ char fixCos(int angle);
 int getPointChaseAlpha(byte idx, long i, int halfPeriod);
 long pickHue(long currentHue);
 
+bool crazyMode = true;
+long modeFrame = 0;
+long crazyModeTime = fps * 60;
+long lampModeTime = fps * 60 * 5;
+
 // List of image effect and alpha channel rendering functions; the code for
 // each of these appears later in this file.  Just a few to start with...
 // simply append new ones to the appropriate list here:
 void (*renderEffect[])(byte) = {
-//  renderEffectSolidFill,
-  renderEffectThrob,
+  renderEffectLampSolidFill,
+  renderEffectLampSolidFill,
+  renderEffectLampThrob,
 //  renderEffectSpectrum,
-  
-//  renderEffectSlide,
+
+  renderEffectThrob,
+  renderEffectSineWaveChase,
+  renderEffectSlide,
+  renderEffectMonochromeChase,
+  renderEffectRainbow,
+  renderEffectSineWaveChase,
+//  renderEffectPointChase,
+//  renderEffectNewtonsCradle,
+//  renderEffectWavyFlag,
+
+
 //  renderEffectBlast,
 //  renderEffectClickVisualization,
 //  renderEffectMonochromeChase,
@@ -287,6 +305,16 @@ void callback() {
   
   if (!slaveMode)
   {
+    modeFrame++;
+    if (modeFrame == 0) { // Crazy mode start
+      tCounter == 0;
+      crazyMode = true;
+    } else if (modeFrame >= crazyModeTime) {
+      tCounter == 0;
+      modeFrame = -lampModeTime;
+      crazyMode = false;
+    }
+
     // Count up to next transition (or end of current one):
     if (autoTransition || tCounter >= 0)
     {
@@ -331,7 +359,11 @@ void startImageTransition(byte frontImgIdx)
   // Randomly pick next image effect and alpha effect indices:
   // 0.5 to 3 second transitions
   if (effectFunctionIndex == -1) {
-    effectFunctionIndex = random((sizeof(renderEffect) / sizeof(renderEffect[0])));
+    if (crazyMode)
+      effectFunctionIndex = random((sizeof(renderEffect) / sizeof(renderEffect[0])) - 3) + 3;
+    else
+      effectFunctionIndex = random(3);
+
     inTransitionTime = random(fps / 2, fps * 3);
   }
   
@@ -436,27 +468,6 @@ void renderEffectRainbow(byte idx) {
   fxVars[idx][3] += fxVars[idx][2];
 }
 
-void renderEffectSpectrum(byte idx) {
-  if(fxVars[idx][0] == 0) { // Initialize effect?
-    gammaRespondsToForce = true;
-    // min hue
-    fxVars[idx][1] = 0;
-    // max hue
-    fxVars[idx][2] = maxHue;
-    fxVars[idx][3] = 0; // Current position
-    fxVars[idx][0] = 1; // Effect initialized
-  }
-
-  byte *ptr = &imgData[idx][0];
-  long color, i;
-  for(i=0; i<numPixels; i++) {
-//    color = hsv2rgb(map(i, 0, numPixels - 1, 100, 600), 255, 255); // range of colors, red to green
-//    color = hsv2rgb(300, map(i, 0, numPixels - 1, 0, 255), 255); // range of saturations, 0 to 255
-    color = hsv2rgb(300, 80, map(i, 0, numPixels - 1, 0, 255)); // range of brightnesses
-    *ptr++ = color >> 16; *ptr++ = color >> 8; *ptr++ = color;
-  }
-}
-
 // Sine wave chase effect
 void renderEffectSineWaveChase(byte idx) {
   if(fxVars[idx][0] == 0) { // Initialize effect?
@@ -469,7 +480,7 @@ void renderEffectSineWaveChase(byte idx) {
     // Frame-to-frame increment (speed) -- may be positive or negative,
     // but magnitude shouldn't be so small as to be boring.  It's generally
     // still less than a full pixel per frame, making motion very smooth.
-    fxVars[idx][3] = 4 + random(fxVars[idx][1]) / numPixels;
+    fxVars[idx][3] = 8 + random(fxVars[idx][1]) / numPixels;
     // Reverse direction half the time.
     if(random(2) == 0) fxVars[idx][3] = -fxVars[idx][3];
     fxVars[idx][4] = 0; // Current position
@@ -537,6 +548,27 @@ void renderEffectPointChase(byte idx) {
   fxVars[idx][4] %= 720;
 }
 
+void renderEffectSpectrum(byte idx) {
+  if(fxVars[idx][0] == 0) { // Initialize effect?
+    gammaRespondsToForce = true;
+    // min hue
+    fxVars[idx][1] = 0;
+    // max hue
+    fxVars[idx][2] = maxHue;
+    fxVars[idx][3] = 0; // Current position
+    fxVars[idx][0] = 1; // Effect initialized
+  }
+
+  byte *ptr = &imgData[idx][0];
+  long color, i;
+  for(i=0; i<numPixels; i++) {
+//    color = hsv2rgb(map(i, 0, numPixels - 1, 100, 600), 255, 255); // range of colors, red to green
+//    color = hsv2rgb(300, map(i, 0, numPixels - 1, 0, 255), 255); // range of saturations, 0 to 255
+    color = hsv2rgb(300, 80, map(i, 0, numPixels - 1, 0, 255)); // range of brightnesses
+    *ptr++ = color >> 16; *ptr++ = color >> 8; *ptr++ = color;
+  }
+}
+
 void renderEffectThrob(byte idx) {
   if(fxVars[idx][0] == 0) { // Initialize effect?
     gammaRespondsToForce = false;
@@ -549,7 +581,7 @@ void renderEffectThrob(byte idx) {
     // Frame-to-frame increment (speed) -- may be positive or negative,
     // but magnitude shouldn't be so small as to be boring.  It's generally
     // still less than a full pixel per frame, making motion very smooth.
-    fxVars[idx][3] = 4 + random(fxVars[idx][1] / 10) / numPixels;
+    fxVars[idx][3] = fps / 8 + random(fps * 3);
     // Reverse direction half the time.
     if(random(2) == 0) fxVars[idx][3] = -fxVars[idx][3];
     fxVars[idx][4] = 0; // Current position
@@ -560,7 +592,43 @@ void renderEffectThrob(byte idx) {
   int  foo;
   long color, i;
   long hue = pickHue(fxVars[idx][1]);
-    foo = fixSin(fxVars[idx][4]);
+  foo = fixSin(fxVars[idx][4]); // -127 (?) to 128 for 0 to 100% brightness
+//  foo = fixSin(fxVars[idx][4]) / 2 + 64; // 50 to 100 % brightness
+  for(long i=0; i<numPixels; i++) {
+    // Peaks of sine wave are white, troughs are black, mid-range
+    // values are pure hue (100% saturated).
+    color = hsv2rgb(hue, 255, 127 + foo);
+//    color = hsv2rgb(300, 80, 127 + foo);
+    *ptr++ = color >> 16; *ptr++ = color >> 8; *ptr++ = color;
+  }
+  fxVars[idx][4] += fxVars[idx][3];
+}
+
+void renderEffectLampThrob(byte idx) {
+  if(fxVars[idx][0] == 0) { // Initialize effect?
+    gammaRespondsToForce = false;
+    fxVars[idx][1] = random(maxHue + 1); // Random hue
+    // Number of repetitions (complete loops around color wheel);
+    // any more than 4 per meter just looks too chaotic.
+    // Store as distance around complete belt in half-degree units:
+    fxVars[idx][2] = (1 + random(4 * ((numPixels + 31) / 32))) * 720;
+//    fxVars[idx][2] = 4;
+    // Frame-to-frame increment (speed) -- may be positive or negative,
+    // but magnitude shouldn't be so small as to be boring.  It's generally
+    // still less than a full pixel per frame, making motion very smooth.
+    fxVars[idx][3] = 2 + random(fxVars[idx][1] / 5) / numPixels;
+    // Reverse direction half the time.
+    if(random(2) == 0) fxVars[idx][3] = -fxVars[idx][3];
+    fxVars[idx][4] = 0; // Current position
+    fxVars[idx][0] = 1; // Effect initialized
+  }
+
+  byte *ptr = &imgData[idx][0];
+  int  foo;
+  long color, i;
+  long hue = pickHue(fxVars[idx][1]);
+//  foo = fixSin(fxVars[idx][4]); // -127 (?) to 128 for 0 to 100% brightness
+  foo = fixSin(fxVars[idx][4]) / 2 + 64; // 50 to 100 % brightness
   for(long i=0; i<numPixels; i++) {
     // Peaks of sine wave are white, troughs are black, mid-range
     // values are pure hue (100% saturated).
@@ -573,4 +641,125 @@ void renderEffectThrob(byte idx) {
 
 // TO DO: Add more effects here...Larson scanner, etc.
 
+// Simplest rendering effect: fill entire image with solid color
+void renderEffectLampSolidFill(byte idx) {
+  // Only needs to be rendered once, when effect is initialized:
+  if(fxVars[idx][0] == 0) {
+    byte *ptr = &imgData[idx][0];
+    long color, i;
+    for(long i=0; i<numPixels; i++) {
+      color = hsv2rgb(300, 80, 255);
+      *ptr++ = color >> 16; *ptr++ = color >> 8; *ptr++ = color;
+    }
 
+    fxVars[idx][0] = 1; // Effect initialized
+  }
+}
+
+void renderEffectFlicker(byte idx) {
+  // Only needs to be rendered once, when effect is initialized:
+  if(fxVars[idx][0] == 0) {
+    fxVars[idx][1] = fps * 1 + random(fps * 2); // flicker episode delay
+    fxVars[idx][2] = random(fps / 2); // time between flickers in an episode
+    fxVars[idx][3] = random(5); // number of flickers in an episode
+    fxVars[idx][4] = 0; // current frame
+    fxVars[idx][5] = 0; // current flicker stage (0: pre-flicker, >0: flicker episode)
+
+    fxVars[idx][0] = 1; // Effect initialized
+  }
+
+  long b = 255;
+//  if (
+
+  byte *ptr = &imgData[idx][0];
+  long color, i;
+  for(long i=0; i<numPixels; i++) {
+    color = hsv2rgb(300, 80, b);
+    *ptr++ = color >> 16; *ptr++ = color >> 8; *ptr++ = color;
+  }
+}
+
+void renderEffectSlide(byte idx) {
+  if(fxVars[idx][0] == 0) { // Initialize effect?
+    gammaRespondsToForce = false;
+    fxVars[idx][1] = random(maxHue + 1); // Random hue
+    // Frame-to-frame increment (speed) -- may be positive or negative,
+    // but magnitude shouldn't be so small as to be boring.
+//    fxVars[idx][3] = 1;
+    // Reverse direction half the time.
+//    if(random(2) == 0) fxVars[idx][3] = -fxVars[idx][3];
+    fxVars[idx][5] = 0; // Current position
+    fxVars[idx][0] = 1; // Effect initialized
+    fxVars[idx][4] = 0;
+    fxVars[idx][3] = random(10) + 1; // acceleration
+    // Reverse direction half the time.
+    if(random(2) == 0) fxVars[idx][3] = -fxVars[idx][3];
+  }
+
+  int hue = pickHue(fxVars[idx][1]);
+
+  clearImage(idx);
+  
+  int x = fxVars[idx][5];
+  int width = subPixels * 8; // width;
+  drawLine(idx, x, width, hue);
+  
+//  fxVars[idx][3] += fxVars[idx][6];
+//  if (abs(fxVars[idx][6]) > 
+
+  // velocity
+//  int v = map(frontFsrStepFraction, 0, fsrStepFractionMax, 0, 100);
+  
+//  if (!slaveMode)
+//    fxVars[idx][3] = fixSin(720 * millis() / 10000 / 3) / 2;
+//    
+  fxVars[idx][4] += fxVars[idx][3];
+  fxVars[idx][5] += fxVars[idx][4] / 30;
+  if (fxVars[idx][5] < 0)
+  {
+    fxVars[idx][5] += numPixels * subPixels;
+  }
+  fxVars[idx][5] %= numPixels * subPixels;
+}
+
+void drawLine(byte idx, int x, int width, int hue)
+{
+  long color, i;
+  byte alpha = 0;
+  
+  byte *ptr;
+  int xp = 0;
+  // draw a line at position x that is width subpixels wide
+  for(long i=x; i<x + width; i++) {
+    alpha++;
+    if ((i + 1) % subPixels == 0)
+    {
+      color = hsv2rgb(hue, 255, alpha * 255 / subPixels);
+      xp = i / subPixels;
+//      ptr = &imgData[idx][xp % numPixels * 3];
+//      *ptr++ = color >> 16; *ptr++ = color >> 8; *ptr++ = color;
+      setPixel(idx, xp % numPixels, color);
+      alpha = 0;
+    }
+  }
+
+  color = hsv2rgb(hue, 255, alpha * 255 / subPixels);
+  setPixel(idx, (xp + 1) % numPixels, color);
+}
+
+void setPixel(byte idx, int xp, long color)
+{
+  if (idx >= 0 && idx < 3 && xp >= 0 && xp < numPixels * 3)
+  {
+    byte *ptr = &imgData[idx][xp * 3];
+    *ptr++ = color >> 16; *ptr++ = color >> 8; *ptr++ = color;
+  }
+}
+
+void clearImage(byte idx)
+{
+  byte *ptr = &imgData[idx][0];
+  for(long i = 0; i < numPixels; i++) {
+    *ptr++ = 0; *ptr++ = 0; *ptr++ = 0;
+  }
+}
